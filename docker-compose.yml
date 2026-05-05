@@ -1,0 +1,15 @@
+services:
+  llm-gateway:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run start:dev"
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - llm_gateway_node_modules:/app/node_modules
+
+volumes:
+  llm_gateway_node_modules:
