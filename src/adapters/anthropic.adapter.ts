@@ -51,7 +51,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   async call(context: ProviderCallContext): Promise<ProviderCallResult> {
     if (context.body.stream === true) {
       return {
-        statusCode: 400,
+        statusCode: 501,
         headers: {},
         body: {
           error: {
@@ -59,7 +59,8 @@ export class AnthropicAdapter implements ProviderAdapter {
             type: 'invalid_request_error',
             code: 'streaming_not_supported'
           }
-        }
+        },
+        retryable: true
       };
     }
 
