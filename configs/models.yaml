@@ -1,0 +1,92 @@
+providers:
+  openai:
+    type: openai-compatible
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
+  groq:
+    type: openai-compatible
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+
+  deepseek:
+    type: openai-compatible
+    base_url: https://api.deepseek.com/v1
+    api_key_env: DEEPSEEK_API_KEY
+
+  together:
+    type: openai-compatible
+    base_url: https://api.together.xyz/v1
+    api_key_env: TOGETHER_API_KEY
+
+  fireworks:
+    type: openai-compatible
+    base_url: https://api.fireworks.ai/inference/v1
+    api_key_env: FIREWORKS_API_KEY
+
+  local-vllm:
+    type: openai-compatible
+    base_url: http://localhost:9000/v1
+    api_key_env: VLLM_API_KEY
+
+  anthropic:
+    type: anthropic
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+
+models:
+  chat-fast:
+    owned_by: llm-gateway
+    capabilities: [chat]
+    primary:
+      provider: groq
+      provider_model: llama-3.1-8b-instant
+    fallback:
+      - provider: openai
+        provider_model: gpt-4o-mini
+      - provider: deepseek
+        provider_model: deepseek-chat
+
+  chat-best:
+    owned_by: llm-gateway
+    capabilities: [chat]
+    primary:
+      provider: openai
+      provider_model: gpt-4o
+    fallback:
+      - provider: anthropic
+        provider_model: claude-3-5-sonnet-latest
+      - provider: deepseek
+        provider_model: deepseek-chat
+
+  chat-cheap:
+    owned_by: llm-gateway
+    capabilities: [chat]
+    primary:
+      provider: deepseek
+      provider_model: deepseek-chat
+    fallback:
+      - provider: groq
+        provider_model: llama-3.1-8b-instant
+
+  embedding-small:
+    owned_by: llm-gateway
+    capabilities: [embeddings]
+    primary:
+      provider: openai
+      provider_model: text-embedding-3-small
+    fallback:
+      - provider: together
+        provider_model: togethercomputer/m2-bert-80M-8k-retrieval
+
+auth:
+  projects:
+    local-dev:
+      name: Local Development
+      api_key_env: PROJECT_API_KEY
+      api_key: dev-project-key
+      allowed_models: ["*"]
+
+policies:
+  retry_status_codes: [429, 500, 502, 503, 504]
+  request_timeout_ms: 60000
