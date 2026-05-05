@@ -69,7 +69,7 @@ export interface AuthenticatedProject {
 export class ConfigLoader implements OnModuleInit {
   private config!: GatewayConfig;
   private rawYaml = '';
-  private readonly configPath = resolve(process.cwd(), process.env.MODELS_CONFIG_PATH ?? 'configs/models.yaml');
+  private configPath = '';
 
   onModuleInit() {
     this.reload();
@@ -78,6 +78,7 @@ export class ConfigLoader implements OnModuleInit {
   reload() {
     dotenv.config();
     dotenv.config({ path: '.env.local', override: false });
+    this.configPath = resolve(process.cwd(), process.env.MODELS_CONFIG_PATH ?? 'configs/models.yaml');
 
     if (!existsSync(this.configPath)) {
       throw new Error(`Model config not found: ${this.configPath}`);

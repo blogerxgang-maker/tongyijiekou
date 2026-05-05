@@ -119,7 +119,8 @@ export class ChatCompletionsController {
 
         lastStatusCode = providerResponse.statusCode;
         lastErrorMessage = this.providerErrorMessage(providerResponse.body, providerResponse.rawText);
-        if (retryStatusCodes.has(providerResponse.statusCode) && index < route.attempts.length - 1) {
+        const shouldTryFallback = retryStatusCodes.has(providerResponse.statusCode) || providerResponse.retryable === true;
+        if (shouldTryFallback && index < route.attempts.length - 1) {
           continue;
         }
 

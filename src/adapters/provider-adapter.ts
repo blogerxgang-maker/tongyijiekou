@@ -20,6 +20,7 @@ export interface ProviderCallResult {
   body?: unknown;
   stream?: Readable;
   rawText?: string;
+  retryable?: boolean;
 }
 
 export interface ProviderAdapter {

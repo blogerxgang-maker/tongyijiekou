@@ -63,10 +63,75 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   private hideProviderModel(providerModel: string, alias: string): Transform {
+    let buffer = '';
     return new Transform({
       transform(chunk, _encoding, callback) {
-        callback(null, String(chunk).replaceAll(providerModel, alias));
+        buffer += String(chunk);
+        let output = '';
+        let boundary = findSseBoundary(buffer);
+
+        while (boundary) {
+          const event = buffer.slice(0, boundary.index);
+          output += rewriteSseEventModel(event, providerModel, alias) + buffer.slice(boundary.index, boundary.index + boundary.length);
+          buffer = buffer.slice(boundary.index + boundary.length);
+          boundary = findSseBoundary(buffer);
+        }
+
+        callback(null, output);
+      },
+      flush(callback) {
+        callback(null, rewriteSseEventModel(buffer, providerModel, alias));
       }
     });
+  }
+}
+
+function findSseBoundary(value: string): { index: number; length: number } | undefined {
+  const lfIndex = value.indexOf('\n\n');
+  const crlfIndex = value.indexOf('\r\n\r\n');
+
+  if (lfIndex === -1 && crlfIndex === -1) {
+    return undefined;
+  }
+
+  if (crlfIndex !== -1 && (lfIndex === -1 || crlfIndex < lfIndex)) {
+    return { index: crlfIndex, length: 4 };
+  }
+
+  return { index: lfIndex, length: 2 };
+}
+
+function rewriteSseEventModel(event: string, providerModel: string, alias: string): string {
+  return event
+    .split(/\r?\n/)
+    .map((line) => rewriteSseDataLine(line, providerModel, alias))
+    .join('\n');
+}
+
+function rewriteSseDataLine(line: string, providerModel: string, alias: string): string {
+  const match = line.match(/^(\s*data:\s*)(.*)$/);
+  if (!match) {
+    return line;
+  }
+
+  const prefix = match[1];
+  const payload = match[2];
+  if (payload === '[DONE]') {
+    return line;
+  }
+
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    if (!parsed || typeof parsed !== 'object' || !('model' in parsed)) {
+      return line;
+    }
+
+    const rewritten = {
+      ...(parsed as Record<string, unknown>),
+      model: (parsed as { model: unknown }).model === providerModel ? alias : (parsed as { model: unknown }).model
+    };
+    return `${prefix}${JSON.stringify(rewritten)}`;
+  } catch {
+    return line;
   }
 }
