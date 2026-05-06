@@ -11,6 +11,7 @@ export interface ProviderCallContext {
   body: Record<string, unknown>;
   operation: ProviderOperation;
   apiKey: string;
+  apiKeyEnv: string;
   timeoutMs: number;
 }
 

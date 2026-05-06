@@ -7,6 +7,7 @@ import { ProviderAdapter, ProviderCallContext, ProviderOperation } from '../adap
 import { GatewayRequest, AuthGuard } from '../core/auth.guard';
 import { ConfigLoader, ModelCapability, ProviderConfig } from '../core/config-loader';
 import { ModelRouter } from '../core/model-router';
+import { ProviderKeyRotator } from '../core/provider-key-rotator';
 import { UsageLogger } from '../core/usage-logger';
 
 @Controller()
@@ -16,6 +17,7 @@ export class ChatCompletionsController {
     private readonly configLoader: ConfigLoader,
     private readonly modelRouter: ModelRouter,
     private readonly openAICompatibleAdapter: OpenAICompatibleAdapter,
+    private readonly providerKeyRotator: ProviderKeyRotator,
     private readonly usageLogger: UsageLogger
   ) {}
 
@@ -56,6 +58,7 @@ export class ChatCompletionsController {
     const retryStatusCodes = this.configLoader.retryStatusCodes();
     let lastErrorMessage = 'Provider request failed';
     let lastStatusCode = 502;
+    const totalTargets = route.attempts.length;
 
     for (const [index, target] of route.attempts.entries()) {
       const provider = this.configLoader.getProvider(target.provider);
@@ -65,87 +68,98 @@ export class ChatCompletionsController {
         continue;
       }
 
-      const apiKey = this.configLoader.getProviderApiKey(provider, target);
-      if (!apiKey) {
-        lastErrorMessage = `Missing provider API key env: ${target.key_ref ?? provider.api_key_env}`;
+      const apiKeys = this.configLoader.getProviderApiKeys(provider, target);
+      const keyAttempts = this.providerKeyRotator.order(target.provider, target, apiKeys);
+      if (keyAttempts.length === 0) {
+        const keyRefs = target.key_ref ?? [provider.api_key_env, ...(provider.api_key_envs ?? [])].join(', ');
+        lastErrorMessage = `Missing provider API key env: ${keyRefs}`;
         lastStatusCode = 500;
         continue;
       }
 
       const adapter = this.adapterFor(provider);
-      const context: ProviderCallContext = {
-        providerId: target.provider,
-        provider,
-        target,
-        alias,
-        body,
-        operation,
-        apiKey,
-        timeoutMs: this.configLoader.requestTimeoutMs()
-      };
 
-      const startedAt = Date.now();
-      try {
-        const providerResponse = await adapter.call(context);
-        const latencyMs = Date.now() - startedAt;
-        const usage = this.extractUsage(providerResponse.body);
-        this.usageLogger.log({
-          request_id: requestId,
-          project: project.id,
+      for (const [keyIndex, apiKey] of keyAttempts.entries()) {
+        const context: ProviderCallContext = {
+          providerId: target.provider,
+          provider,
+          target,
           alias,
-          provider: target.provider,
-          provider_model: target.provider_model,
-          latency_ms: latencyMs,
-          status_code: providerResponse.statusCode,
-          usage
-        });
+          body,
+          operation,
+          apiKey: apiKey.key,
+          apiKeyEnv: apiKey.env,
+          timeoutMs: this.configLoader.requestTimeoutMs()
+        };
 
-        if (providerResponse.statusCode >= 200 && providerResponse.statusCode < 300) {
-          response.setHeader('x-request-id', requestId);
+        const startedAt = Date.now();
+        try {
+          const providerResponse = await adapter.call(context);
+          const latencyMs = Date.now() - startedAt;
+          const usage = this.extractUsage(providerResponse.body);
+          this.usageLogger.log({
+            request_id: requestId,
+            project: project.id,
+            alias,
+            provider: target.provider,
+            provider_model: target.provider_model,
+            api_key_env: apiKey.env,
+            latency_ms: latencyMs,
+            status_code: providerResponse.statusCode,
+            usage
+          });
 
-          if (providerResponse.stream) {
-            response.status(providerResponse.statusCode);
-            response.setHeader('content-type', 'text/event-stream; charset=utf-8');
-            response.setHeader('cache-control', 'no-cache, no-transform');
-            response.setHeader('connection', 'keep-alive');
-            providerResponse.stream.pipe(response);
-            return;
+          if (providerResponse.statusCode >= 200 && providerResponse.statusCode < 300) {
+            response.setHeader('x-request-id', requestId);
+
+            if (providerResponse.stream) {
+              response.status(providerResponse.statusCode);
+              response.setHeader('content-type', 'text/event-stream; charset=utf-8');
+              response.setHeader('cache-control', 'no-cache, no-transform');
+              response.setHeader('connection', 'keep-alive');
+              providerResponse.stream.pipe(response);
+              return;
+            }
+
+            return response.status(providerResponse.statusCode).json(
+              adapter.toOpenAICompatibleResponse(providerResponse.body, context)
+            );
           }
 
-          return response.status(providerResponse.statusCode).json(
-            adapter.toOpenAICompatibleResponse(providerResponse.body, context)
+          lastStatusCode = providerResponse.statusCode;
+          lastErrorMessage = this.providerErrorMessage(providerResponse.body, providerResponse.rawText);
+          if (
+            retryStatusCodes.has(providerResponse.statusCode) &&
+            (keyIndex < keyAttempts.length - 1 || index < totalTargets - 1)
+          ) {
+            continue;
+          }
+
+          return this.sendOpenAIError(
+            response,
+            providerResponse.statusCode,
+            lastErrorMessage,
+            'provider_error',
+            String(providerResponse.statusCode)
           );
-        }
+        } catch (error) {
+          const latencyMs = Date.now() - startedAt;
+          lastStatusCode = 502;
+          lastErrorMessage = this.messageFromError(error);
+          this.usageLogger.log({
+            request_id: requestId,
+            project: project.id,
+            alias,
+            provider: target.provider,
+            provider_model: target.provider_model,
+            api_key_env: apiKey.env,
+            latency_ms: latencyMs,
+            status_code: 502
+          });
 
-        lastStatusCode = providerResponse.statusCode;
-        lastErrorMessage = this.providerErrorMessage(providerResponse.body, providerResponse.rawText);
-        if (retryStatusCodes.has(providerResponse.statusCode) && index < route.attempts.length - 1) {
-          continue;
-        }
-
-        return this.sendOpenAIError(
-          response,
-          providerResponse.statusCode,
-          lastErrorMessage,
-          'provider_error',
-          String(providerResponse.statusCode)
-        );
-      } catch (error) {
-        const latencyMs = Date.now() - startedAt;
-        lastStatusCode = 502;
-        lastErrorMessage = this.messageFromError(error);
-        this.usageLogger.log({
-          request_id: requestId,
-          project: project.id,
-          alias,
-          provider: target.provider,
-          provider_model: target.provider_model,
-          latency_ms: latencyMs,
-          status_code: 502
-        });
-
-        if (index < route.attempts.length - 1) {
-          continue;
+          if (keyIndex < keyAttempts.length - 1 || index < totalTargets - 1) {
+            continue;
+          }
         }
       }
     }

@@ -8,14 +8,14 @@
 - `POST /v1/embeddings`
 - `GET /v1/models`
 - `GET /healthz`
-- OpenAI-compatible provider：OpenAI、Groq、DeepSeek、Together、Fireworks、vLLM
+- OpenAI-compatible provider：Gemini、NVIDIA NIM，以及后续新增的兼容 provider
 - Anthropic adapter：已支持非 stream 的基础 messages API 转换
 - `stream=true`：OpenAI-compatible provider 的 SSE 流式转发
 - `stream=false`：普通 JSON 返回
 - YAML 模型路由：`configs/models.yaml`
-- dotenv 加载 provider key
+- dotenv 加载 provider key；同一 provider 支持多个 key 轮询
 - project API key 鉴权 + model alias 授权
-- primary + fallback：遇到 `429/500/502/503/504` 按顺序尝试下一目标，每个 target 最多一次
+- primary + fallback：遇到 `429/500/502/503/504` 先尝试当前 target 的下一个可用 key，再按顺序尝试下一目标
 - UsageLogger 只记录元数据，不记录 prompt/output
 - 简易配置后台：`http://localhost:8000/yixi188500`
 
@@ -30,9 +30,10 @@ npm run start:dev
 默认 project API key 是 `dev-project-key`。真实 provider key 不要写进代码或 YAML，只放进 `.env`：
 
 ```env
-OPENAI_API_KEY=sk-...
-GROQ_API_KEY=gsk_...
-DEEPSEEK_API_KEY=sk-...
+GEMINI_API_KEY=...
+GEMINI_API_KEY_2=...
+NVIDIA_API_KEY=...
+NVIDIA_API_KEY_2=...
 ```
 
 健康检查：
@@ -52,16 +53,27 @@ http://localhost:8000/yixi188500
 示例：
 
 ```yaml
+providers:
+  gemini:
+    type: openai-compatible
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    api_key_envs:
+      - GEMINI_API_KEY_2
+      - GEMINI_API_KEY_3
+
 models:
   chat-fast:
     capabilities: [chat]
     primary:
-      provider: groq
-      provider_model: llama-3.1-8b-instant
+      provider: gemini
+      provider_model: gemini-3-flash-preview
     fallback:
-      - provider: openai
-        provider_model: gpt-4o-mini
+      - provider: nvidia
+        provider_model: nvidia/llama-3.1-nemotron-nano-8b-v1
 ```
+
+`api_key_env` 是主 key，`api_key_envs` 是附加 key 池；请求会按 provider + model 轮询这些环境变量。后续新增 provider 时，只要增加一个 `providers.<id>` 并在 model alias 中引用即可。
 
 客户端请求只传：
 
