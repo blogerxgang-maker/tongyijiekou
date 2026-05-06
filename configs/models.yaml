@@ -1,83 +1,60 @@
 providers:
-  openai:
+  gemini:
     type: openai-compatible
-    base_url: https://api.openai.com/v1
-    api_key_env: OPENAI_API_KEY
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    api_key_envs:
+      - GEMINI_API_KEY_2
+      - GEMINI_API_KEY_3
 
-  groq:
+  nvidia:
     type: openai-compatible
-    base_url: https://api.groq.com/openai/v1
-    api_key_env: GROQ_API_KEY
-
-  deepseek:
-    type: openai-compatible
-    base_url: https://api.deepseek.com/v1
-    api_key_env: DEEPSEEK_API_KEY
-
-  together:
-    type: openai-compatible
-    base_url: https://api.together.xyz/v1
-    api_key_env: TOGETHER_API_KEY
-
-  fireworks:
-    type: openai-compatible
-    base_url: https://api.fireworks.ai/inference/v1
-    api_key_env: FIREWORKS_API_KEY
-
-  local-vllm:
-    type: openai-compatible
-    base_url: http://localhost:9000/v1
-    api_key_env: VLLM_API_KEY
-
-  anthropic:
-    type: anthropic
-    base_url: https://api.anthropic.com/v1
-    api_key_env: ANTHROPIC_API_KEY
+    base_url: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    api_key_envs:
+      - NVIDIA_API_KEY_2
+      - NVIDIA_API_KEY_3
 
 models:
   chat-fast:
     owned_by: llm-gateway
     capabilities: [chat]
     primary:
-      provider: groq
-      provider_model: llama-3.1-8b-instant
+      provider: gemini
+      provider_model: gemini-3-flash-preview
     fallback:
-      - provider: openai
-        provider_model: gpt-4o-mini
-      - provider: deepseek
-        provider_model: deepseek-chat
+      - provider: nvidia
+        provider_model: nvidia/llama-3.1-nemotron-nano-8b-v1
 
   chat-best:
     owned_by: llm-gateway
     capabilities: [chat]
     primary:
-      provider: openai
-      provider_model: gpt-4o
+      provider: gemini
+      provider_model: gemini-3-flash-preview
     fallback:
-      - provider: anthropic
-        provider_model: claude-3-5-sonnet-latest
-      - provider: deepseek
-        provider_model: deepseek-chat
+      - provider: nvidia
+        provider_model: nvidia/llama-3.3-nemotron-super-49b-v1
 
   chat-cheap:
     owned_by: llm-gateway
     capabilities: [chat]
     primary:
-      provider: deepseek
-      provider_model: deepseek-chat
+      provider: nvidia
+      provider_model: nvidia/llama-3.1-nemotron-nano-8b-v1
     fallback:
-      - provider: groq
-        provider_model: llama-3.1-8b-instant
+      - provider: gemini
+        provider_model: gemini-3-flash-preview
 
   embedding-small:
     owned_by: llm-gateway
     capabilities: [embeddings]
     primary:
-      provider: openai
-      provider_model: text-embedding-3-small
+      provider: nvidia
+      provider_model: nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1
     fallback:
-      - provider: together
-        provider_model: togethercomputer/m2-bert-80M-8k-retrieval
+      - provider: gemini
+        provider_model: text-embedding-004
 
 auth:
   projects:

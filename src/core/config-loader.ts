@@ -13,6 +13,7 @@ const providerSchema = z.object({
   type: providerTypeSchema,
   base_url: z.string().url(),
   api_key_env: z.string().min(1),
+  api_key_envs: z.array(z.string().min(1)).optional(),
   headers: headersSchema.optional()
 });
 
@@ -63,6 +64,11 @@ export interface AuthenticatedProject {
   id: string;
   name: string;
   allowedModels: string[];
+}
+
+export interface ProviderApiKey {
+  key: string;
+  env: string;
 }
 
 @Injectable()
@@ -117,9 +123,14 @@ export class ConfigLoader implements OnModuleInit {
     return this.config.providers[providerId];
   }
 
-  getProviderApiKey(provider: ProviderConfig, target?: RouteTarget): string | undefined {
-    const keyRef = target?.key_ref ?? provider.api_key_env;
-    return process.env[keyRef];
+  getProviderApiKeys(provider: ProviderConfig, target?: RouteTarget): ProviderApiKey[] {
+    const keyRefs = target?.key_ref
+      ? [target.key_ref]
+      : [provider.api_key_env, ...(provider.api_key_envs ?? [])];
+
+    return [...new Set(keyRefs)]
+      .map((env) => ({ env, key: process.env[env] }))
+      .filter((apiKey): apiKey is ProviderApiKey => Boolean(apiKey.key));
   }
 
   getProjectApiKey(project: ProjectConfig): string | undefined {

@@ -7,6 +7,7 @@ import { OpenAICompatibleAdapter } from './adapters/openai-compatible.adapter';
 import { AuthGuard } from './core/auth.guard';
 import { ConfigLoader } from './core/config-loader';
 import { ModelRouter } from './core/model-router';
+import { ProviderKeyRotator } from './core/provider-key-rotator';
 import { UsageLogger } from './core/usage-logger';
 
 @Module({
@@ -17,6 +18,7 @@ import { UsageLogger } from './core/usage-logger';
     ConfigLoader,
     ModelRouter,
     OpenAICompatibleAdapter,
+    ProviderKeyRotator,
     UsageLogger
   ]
 })

@@ -6,6 +6,7 @@ export interface UsageLogEntry {
   alias: string;
   provider: string;
   provider_model: string;
+  api_key_env?: string;
   latency_ms: number;
   status_code: number;
   usage?: unknown;
